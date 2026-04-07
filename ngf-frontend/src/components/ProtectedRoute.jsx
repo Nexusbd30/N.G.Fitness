@@ -1,33 +1,25 @@
-/**
- * components/ProtectedRoute.jsx
- * Guarda de ruta: redirige al login si el usuario no está autenticado.
- *
- * Uso en el router:
- *   <Route element={<ProtectedRoute />}>
- *     <Route path="/dashboard" element={<DashboardPage />} />
- *   </Route>
- */
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+export default function ProtectedRoute({ children, role }) {
+  const location = useLocation();
+  const { isAuthenticated, loading, user } = useAuth();
 
-export function ProtectedRoute() {
-  const { user, loading } = useAuth();
-
-  // Mientras verifica la sesión muestra pantalla de carga
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400 animate-pulse">Verificando sesión...</p>
+      <div className="page">
+        <div className="empty">Cargando sesión...</div>
       </div>
     );
   }
 
-  // Si no hay usuario → redirige al login
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate replace state={{ from: location }} to="/" />;
   }
 
-  // Usuario autenticado → renderiza la ruta hija
-  return <Outlet />;
+  if (role && user?.role !== role) {
+    return <Navigate replace to={user?.role === "coach" ? "/coach" : "/athlete"} />;
+  }
+
+  return children;
 }

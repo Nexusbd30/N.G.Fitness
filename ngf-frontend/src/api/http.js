@@ -1,58 +1,67 @@
-/**
- * api/http.js
- * Cliente HTTP centralizado con interceptor de refresh token.
- * Todas las llamadas a la API deben usar esta instancia de axios.
- */
+import axios from "axios";
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "../lib/authStorage";
 
-import axios from 'axios';
-import { authStorage } from '../utils/authStorage';
-
-// ─── Instancia base ────────────────────────────────────────────────────────────
 const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
-// ─── Interceptor de Request ────────────────────────────────────────────────────
-// Añade el access token en cada petición automáticamente
-http.interceptors.request.use(
-  (config) => {
-    const token = authStorage.getAccessToken();
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+let refreshPromise = null;
 
-// ─── Interceptor de Response ───────────────────────────────────────────────────
-// Si recibe 401, intenta renovar el access token con el refresh token
-// Si falla la renovación, cierra sesión automáticamente
+http.interceptors.request.use((config) => {
+  const token = getAccessToken();
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
 http.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const original = error.config;
+    const originalRequest = error.config;
+    const refreshToken = getRefreshToken();
 
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
-
-      try {
-        const newToken = await authStorage.refreshToken();
-        original.headers['Authorization'] = `Bearer ${newToken}`;
-        return http(original); // reintenta la petición original
-      } catch (refreshError) {
-        // El refresh también falló → logout forzado
-        authStorage.clear();
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+    if (
+      error.response?.status !== 401 ||
+      originalRequest?._retry ||
+      !refreshToken ||
+      originalRequest?.url?.includes("/auth/login") ||
+      originalRequest?.url?.includes("/auth/register") ||
+      originalRequest?.url?.includes("/auth/refresh")
+    ) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
-  }
+    originalRequest._retry = true;
+
+    if (!refreshPromise) {
+      refreshPromise = axios
+        .post(`${http.defaults.baseURL}/auth/refresh`, {
+          refresh_token: refreshToken,
+        })
+        .then((response) => {
+          setTokens(response.data);
+          return response.data.access_token;
+        })
+        .catch((refreshError) => {
+          clearTokens();
+          throw refreshError;
+        })
+        .finally(() => {
+          refreshPromise = null;
+        });
+    }
+
+    const newAccessToken = await refreshPromise;
+    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+    return http(originalRequest);
+  },
 );
 
 export default http;

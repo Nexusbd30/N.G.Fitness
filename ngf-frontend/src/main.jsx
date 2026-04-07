@@ -1,15 +1,16 @@
-/**
- * main.jsx
- * Punto de entrada de la aplicación React + Vite.
- */
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import { AppRouter } from './app/AppRouter';
+import { AuthProvider } from './context/AuthContext';
+import './styles.css';
 
-import { StrictMode } from 'react';
-import { createRoot }  from 'react-dom/client';
-import './styles/index.css';
-import App from './App';
-
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRouter />
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>
 );
